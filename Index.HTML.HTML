@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 Premier Series | LIVE HQ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        .accent-green { color: #4ade80; }
+        .accent-purple { color: #a78bfa; }
+        .tab-active { border-bottom: 3px solid #4ade80; color: #4ade80 !important; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        input, select { background: #1e293b; border: 1px solid #334155; color: white; border-radius: 8px; padding: 10px; font-size: 13px; width: 100%; outline: none; }
+        .staged-add { border-left: 4px solid #4ade80; background: rgba(74, 222, 128, 0.05); }
+        .matchup-card { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 16px; }
+        .res-badge { font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; margin-left: 8px; }
+        .res-W { background: #166534; color: #4ade80; }
+        .res-L { background: #7f1d1d; color: #f87171; }
+        .res-T { background: #334155; color: #94a3b8; }
+        #sync-status { font-size: 8px; font-weight: 900; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; }
+        .sync-online { background: #064e3b; color: #4ade80; }
+        .sync-offline { background: #450a0a; color: #f87171; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-[1600px] mx-auto">
+        <header class="mb-10 flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-800 pb-8">
+            <div class="text-left">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-6xl font-black uppercase tracking-tighter italic text-white">BYRON Sucks League 2026</h1>
+                    <div id="sync-status" class="sync-offline">OFFLINE</div>
+                </div>
+                <p class="text-slate-500 font-bold text-[10px] uppercase tracking-[0.4em] mt-2 italic">LIVE SYNC • v21.2 Final</p>
+            </div>
+            <nav class="flex gap-8 text-[11px] font-black uppercase tracking-widest text-slate-500">
+                <button onclick="switchTab('standings')" class="nav-link tab-active" id="btn-standings">Schedule</button>
+                <button onclick="switchTab('players')" class="nav-link" id="btn-players">Players</button>
+                <button onclick="switchTab('teams')" class="nav-link" id="btn-teams">My Team</button>
+                <button onclick="switchTab('waivers')" class="nav-link" id="btn-waivers">Waivers and Trades</button>
+            </nav>
+        </header>
+
+        <div id="tab-standings" class="tab-content active space-y-8">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div class="glass rounded-3xl p-6 border-t-4 border-green-500 h-fit">
+                    <h2 class="text-xs font-black uppercase tracking-widest mb-6 text-slate-400">Standings</h2>
+                    <table class="w-full text-left text-sm" id="standings-table"></table>
+                </div>
+                <div class="lg:col-span-3 space-y-4">
+                    <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Season Schedule</h2>
+                    <div id="schedule-container" class="space-y-6 max-h-[800px] overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-players" class="tab-content space-y-8">
+            <div class="glass rounded-3xl p-8 border-t-4 border-blue-500">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
+                    <h2 class="text-2xl font-black uppercase italic">Global Directory</h2>
+                    <div class="w-full md:w-96"><input type="text" id="globalSearch" onkeyup="render()" placeholder="Search pros..."></div>
+                </div>
+                <div class="max-h-[600px] overflow-y-auto pr-2">
+                    <table class="w-full text-left text-sm">
+                        <thead class="sticky top-0 bg-[#020617] text-[10px] uppercase text-slate-500">
+                            <tr><th class="p-4">Rank</th><th class="p-4">Name</th><th class="p-4">Price</th><th class="p-4 text-right">Status</th></tr>
+                        </thead>
+                        <tbody id="directory-body" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-teams" class="tab-content space-y-8">
+            <div id="team-nav" class="flex gap-4 mb-4 overflow-x-auto pb-2"></div>
+            <div id="active-team-view" class="grid grid-cols-1 xl:grid-cols-3 gap-8"></div>
+        </div>
+
+        <div id="tab-waivers" class="tab-content space-y-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="space-y-8">
+                    <div class="glass rounded-3xl p-8 border-t-4 border-green-500 h-fit">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xs font-black uppercase text-accent-green">Waiver Priority Order</h2>
+                            <button onclick="manualWaiverOrder()" class="text-[8px] font-black bg-slate-800 px-2 py-1 rounded">EDIT</button>
+                        </div>
+                        <div id="waiver-order" class="space-y-2"></div>
+                    </div>
+                    <div class="glass rounded-3xl p-8 border-t-4 border-slate-500">
+                        <h2 class="text-xs font-black uppercase mb-6">Manage Teams</h2>
+                        <div id="manage-teams-list" class="space-y-2 mb-6"></div>
+                        <button onclick="addTeam()" class="w-full py-2 bg-slate-800 text-[10px] font-black uppercase rounded-lg">+ Add Team</button>
+                    </div>
+                </div>
+                <div class="lg:col-span-2 glass rounded-3xl p-8 border-t-4 border-purple-500 shadow-2xl">
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-xs font-black uppercase">Transaction Queue</h2>
+                        <button onclick="processWaivers()" class="text-[10px] font-black bg-blue-600 px-4 py-2 rounded-xl">Run Waivers</button>
+                    </div>
+                    <div id="claims-list" class="space-y-3 mb-10 border-b border-slate-800 pb-10"></div>
+                    <div id="active-trades" class="space-y-4 mb-10"></div>
+                    <h2 class="text-xs font-black uppercase text-slate-500 mb-6">History Log</h2>
+                    <div id="trade-log" class="text-[10px] font-mono text-slate-600 space-y-2 max-h-64 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://uppjnxxjzxwohfafunws.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_rSENAIJnpRllIxWypgF3rg_4_d5YXLY";
+        const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // RESTORED MASTER PLAYER LIST
+        const players = [
+            {name:"Scottie Scheffler", rank:1, price:45000000}, {name:"Rory McIlroy", rank:2, price:38000000}, {name:"Tommy Fleetwood", rank:3, price:34000000}, {name:"Justin Rose", rank:4, price:32000000}, {name:"Collin Morikawa", rank:5, price:30000000}, {name:"Chris Gotterup", rank:6, price:27000000}, {name:"Russell Henley", rank:7, price:26000000}, {name:"Robert MacIntyre", rank:8, price:25000000}, {name:"J.J. Spaun", rank:9, price:23000000}, {name:"Xander Schauffele", rank:10, price:24000000}, {name:"Ben Griffin", rank:11, price:22000000}, {name:"Hideki Matsuyama", rank:12, price:21000000}, {name:"Sepp Straka", rank:13, price:20000000}, {name:"Justin Thomas", rank:14, price:19000000}, {name:"Harris English", rank:15, price:18000000}, {name:"Alex Noren", rank:16, price:17000000}, {name:"Viktor Hovland", rank:17, price:16000000}, {name:"Patrick Reed -LIV", rank:18, price:5000000}, {name:"Jacob Bridgeman", rank:19, price:14000000}, {name:"Keegan Bradley", rank:20, price:14000000}, {name:"Cameron Young", rank:21, price:12000000}, {name:"Matt Fitzpatrick", rank:22, price:12000000}, {name:"Ludvig Åberg", rank:23, price:12000000}, {name:"Maverick McNealy", rank:24, price:10000000}, {name:"Tyrrell Hatton -LIV", rank:25, price:10000000}, {name:"Ryan Gerard", rank:26, price:10000000}, {name:"Shane Lowry", rank:27, price:10000000}, {name:"Si Woo Kim", rank:28, price:10000000}, {name:"Sam Burns", rank:29, price:10000000}, {name:"Kurt Kitayama", rank:30, price:10000000}, {name:"Patrick Cantlay", rank:31, price:10000000}, {name:"Min Woo Lee", rank:32, price:10000000}, {name:"Aaron Rai", rank:33, price:10000000}, {name:"Nicolas Echavarria", rank:34, price:10000000}, {name:"Marco Penge", rank:35, price:8000000}, {name:"Bryson DeChambeau -LIV", rank:36, price:10000000}, {name:"Jason Day", rank:37, price:8000000}, {name:"Corey Conners", rank:38, price:8000000}, {name:"Akshay Bhatia", rank:39, price:8000000}, {name:"Matt McCarty", rank:40, price:8000000}, {name:"Jake Knapp", rank:41, price:8000000}, {name:"Andrew Novak", rank:42, price:8000000}, {name:"Kristoffer Reitan", rank:43, price:8000000}, {name:"Ryan Fox", rank:44, price:5000000}, {name:"Michael Brennan", rank:45, price:5000000}, {name:"Samuel Stevens", rank:46, price:5000000}, {name:"Pierceson Coody", rank:47, price:5000000}, {name:"Rasmus Højgaard", rank:48, price:5000000}, {name:"Sami Välimäki", rank:49, price:5000000}, {name:"Nicolai Højgaard", rank:50, price:5000000}, {name:"Michael Kim", rank:51, price:5000000}, {name:"Max Greyserman", rank:52, price:5000000}, {name:"Adam Scott", rank:53, price:5000000}, {name:"Jon Rahm -LIV", rank:"N/A", price:10000000}, {name:"Brooks Koepka -LIV", rank:"N/A", price:10000000}, {name:"Cameron Smith -LIV", rank:"N/A", price:10000000}, {name:"Joaquin Niemann -LIV", rank:"N/A", price:10000000}, {name:"Dustin Johnson -LIV", rank:"N/A", price:10000000}, {name:"Brian Harman", rank:55, price:5000000}, {name:"Michael Thorbjornsen", rank:56, price:5000000}, {name:"Jayden Schaper", rank:57, price:5000000}, {name:"R. Neergaard-Petersen", rank:58, price:3000000}, {name:"Nick Taylor", rank:59, price:5000000}, {name:"Harry Hall", rank:60, price:3000000}, {name:"Daniel Berger", rank:62, price:5000000}, {name:"Taylor Pendrith", rank:63, price:3000000}, {name:"Johnny Keefer", rank:63, price:3000000}, {name:"Ryo Hisatsune", rank:65, price:3000000}, {name:"J.T. Poston", rank:66, price:3000000}, {name:"Wyndham Clark", rank:66, price:5000000}, {name:"Rickie Fowler", rank:68, price:3000000}, {name:"Aldrich Potgieter", rank:71, price:3000000}, {name:"Max McGreevy", rank:71, price:3000000}, {name:"Thomas Detry", rank:70, price:3000000}, {name:"Haotong Li", rank:72, price:3000000}, {name:"Sungjae Im", rank:72, price:3000000}, {name:"Elvis Smylie", rank:73, price:1500000}, {name:"Garrick Higgo", rank:75, price:3000000}, {name:"Jordan Spieth", rank:75, price:5000000}, {name:"Dan Brown", rank:76, price:1500000}, {name:"Rico Hoey", rank:77, price:1500000}, {name:"Lucas Glover", rank:79, price:3000000}, {name:"Laurie Canter -LIV", rank:"N/A", price:5000000}, {name:"Casey Jarvis", rank:81, price:1500000}, {name:"Thriston Lawrence", rank:81, price:1500000}, {name:"Bud Cauley", rank:82, price:1500000}, {name:"Daniel Hillier", rank:83, price:1500000}, {name:"Billy Horschel", rank:84, price:1500000}, {name:"Patrick Rodgers", rank:85, price:1500000}, {name:"Tom McKibbin", rank:86, price:1500000}, {name:"John Parry", rank:87, price:1500000}, {name:"Adrien Saddier", rank:88, price:1500000}, {name:"Denny McCarthy", rank:89, price:3000000}, {name:"Jordan Smith", rank:90, price:1500000}, {name:"David Puig -LIV", rank:"N/A", price:5000000}, {name:"Brian Campbell", rank:92, price:1500000}, {name:"Christiaan Bezuidenhout", rank:93, price:1500000}, {name:"Matt Wallace", rank:94, price:1500000}, {name:"Tom Hoge", rank:95, price:1500000}, {name:"Matti Schmid", rank:96, price:1500000}, {name:"Sahith Theegala", rank:97, price:3000000}, {name:"Chris Kirk", rank:98, price:3000000}, {name:"Austin Smotherman", rank:99, price:1500000}, {name:"Thorbjørn Olesen", rank:100, price:1500000}
+        ];
+        const extraNames = ["Tony Finau", "Davis Riley", "Jhonattan Vegas", "Angel Ayora", "Mackenzie Hughes", "Ian Holt", "Mac Meissner", "Stephan Jaeger", "Andy Sullivan", "Kevin Yu", "Keith Mitchell", "Shaun Norris", "Emiliano Grillo", "Byeong Hun An", "Keita Nakajima", "Nacho Elvira", "Eric Cole", "Tom Kim", "Davis Thompson", "Alex Smalley", "Vince Whaley", "Andrew Putnam", "Takumi Kanaya", "Steven Fisk", "William Mouw", "Calum Hill", "Kazuki Higa", "Jacob Skov Olesen", "Neal Shipley", "Joe Highsmith", "Joakim Lagergren", "Martin Couvra", "Lee Hodges", "Peter Uihlein -LIV", "Kevin Roy", "Mark Hubbard", "Adam Schenk", "Taylor Moore", "Ricky Castillo", "JC Ritchie", "Chandler Blanchet", "Eugenio Chacarra -LIV", "Erik van Rooyen", "Julien Guerrier", "Karl Vilips", "Matt Kuchar", "Gary Woodland", "Max Homa", "Oliver Lindell", "David Lipsky", "Patrick Fishburn", "Beau Hossler", "Chad Ramey", "S.H. Kim", "Séamus Power", "Grant Forrest", "Austin Eckroat", "Antoine Rozner", "Wenyi Ding", "Joel Dahmen", "Adrien Dumont de Chassart", "Francesco Laporta", "Carson Young", "Victor Perez", "Chandler Phillips", "Lucas Herbert -LIV", "Jorge Campillo", "Taylor Montgomery", "Ewen Ferguson", "Marcus Armitage", "Dan Bradbury", "Emilio Gonzalez", "Zach Bauchou", "Kensei Hirata", "Doug Ghim", "Cam Davis", "Jesper Svensson", "Scott Vincent -LIV", "Zecheng Dou", "Richard Mansell", "Christo Lamprecht", "Carlos Ortiz -LIV", "Justin Lower", "Joost Luiten", "Niklas Norgaard", "Kazuma Kobori", "Jacques Kruyswijk", "Alistair Docherty", "Jackson Suber", "Kota Kaneko", "Freddy Schott", "Josele Ballester", "Johannes Veerman", "Davis Bryant", "Richard Sterne", "Jackson Koivun", "Alex Fitzpatrick", "Richard T. Lee", "Barend Botha"];
+        extraNames.forEach((n, i) => { if(!players.find(p => p.name === n)) players.push({name: n, rank: 101+i, price: n.includes("-LIV") ? 5000000 : 1500000}); });
+
+        let state = {
+            teams: Array.from({length: 6}, (_, i) => ({ id: i, name: `Team ${i+1}`, roster: [], w:0, l:0, t:0, pts:0 })),
+            waiverOrder: [], claims: [], trades: [], tradeLog: [], activeTeamIdx: 0, stagedAdds: [], stagedDrops: [], results: {}
+        };
+
+        async function fetchState() {
+            try {
+                const { data, error } = await client.from('league_state').select('data').eq('id', 1).single();
+                if (error) throw error;
+                if (data && data.data && Object.keys(data.data).length > 0) {
+                    state = data.data;
+                    document.getElementById('sync-status').innerText = "LIVE SYNC ON";
+                    document.getElementById('sync-status').className = "sync-online";
+                } else {
+                    state.waiverOrder = state.teams.map(t => t.name);
+                    await pushState();
+                }
+                render();
+            } catch (e) {
+                console.error("Sync Error:", e);
+                document.getElementById('sync-status').innerText = "SYNC FAILED";
+            }
+        }
+
+        async function pushState() {
+            await client.from('league_state').upsert({ id: 1, data: state });
+        }
+
+        client.channel('any').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'league_state' }, payload => {
+            state = payload.new.data; render();
+        }).subscribe();
+
+        const sched = [
+            {n:"THE PLAYERS", d:"Mar 12-15", t:"Flagship", pts:3, m:[[0,5], [1,4], [2,3]]},
+            {n:"The Masters", d:"Apr 9-12", t:"MAJOR", pts:6, m:[[0,1], [2,5], [3,4]]},
+            {n:"RBC Heritage", d:"Apr 16-19", t:"Signature", pts:3, m:[[0,2], [1,3], [4,5]]},
+            {n:"PGA Champ", d:"May 14-17", t:"MAJOR", pts:6, m:[[0,5], [1,4], [2,3]]},
+            {n:"U.S. Open", d:"Jun 18-21", t:"MAJOR", pts:6, m:[[0,2], [1,3], [4,5]]},
+            {n:"The Open", d:"Jul 16-19", t:"MAJOR", pts:6, m:[[0,4], [1,2], [3,5]]}
+        ];
+
+        function render() {
+            const table = document.getElementById('standings-table');
+            table.innerHTML = [...state.teams].sort((a,b) => b.pts - a.pts).map((t) => {
+                const rIdx = state.teams.findIndex(x => x.id === t.id);
+                return `<tr class="border-t border-slate-800/50"><td class="py-4 font-black uppercase text-[10px]">${t.name}</td><td class="text-center font-mono text-[9px] text-slate-500">${t.w}-${t.l}-${t.t}</td><td class="text-right py-4 flex items-center justify-end gap-2"><span class="accent-green font-black text-lg">${t.pts}</span><button onclick="adjustPoints(${rIdx})" class="opacity-10 hover:opacity-100 text-[10px]">[-]</button></td></tr>`}).join('');
+            
+            document.getElementById('schedule-container').innerHTML = sched.map(s => `
+                <div class="glass p-6 rounded-3xl border border-slate-800">
+                    <div class="flex justify-between items-start mb-6"><div><h3 class="font-black uppercase text-lg inline-block">${s.n}</h3> <span class="ml-3 text-[10px] font-mono text-slate-500">${s.d}</span><br><span class="text-[9px] font-black px-2 py-0.5 rounded ${s.t==='MAJOR'?'bg-green-900 text-green-400':'bg-slate-800 text-slate-400'}">${s.t} • ${s.pts} PTS</span></div></div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">${s.m.map(match => `<div class="matchup-card space-y-4">${match.map(idx => { const team = state.teams[idx]; const res = state.results[s.n]?.[idx]; return team ? `<div class="flex justify-between items-center truncate font-black text-[10px] uppercase"><div>${team.name}${res ? `<span class="res-badge res-${res}">${res}</span>` : ''}</div><select class="!w-12 !p-1 !text-[9px] !bg-slate-900" onchange="submitResult('${s.n}', ${idx}, this.value, ${s.pts}); this.value=''"><option value="">-</option><option value="W">W</option><option value="L">L</option><option value="T">T</option></select></div>` : `<div class="text-[9px] text-slate-700 italic uppercase">BYE</div>`; }).join('<div class="text-center text-[9px] font-black text-slate-700 italic">VS</div>')}</div>`).join('')}</div>
+                </div>`).join('');
+
+            const q = document.getElementById('globalSearch').value.toLowerCase();
+            document.getElementById('directory-body').innerHTML = players.filter(p => p.name.toLowerCase().includes(q)).sort((a,b) => (a.rank==="N/A"?1:b.rank==="N/A"?-1:a.rank-b.rank)).map(p => {
+                const owner = state.teams.find(t => t.roster.some(r => r.name === p.name));
+                return `<tr><td class="p-4 font-mono text-slate-500">#${p.rank||'NA'}</td><td class="p-4 font-black uppercase text-sm">${p.name}</td><td class="p-4 font-black accent-green">$${(p.price/1000000).toFixed(1)}M</td><td class="p-4 text-right pr-4"><span class="px-2 py-1 rounded text-[9px] font-black uppercase ${owner?'bg-purple-900 text-purple-400':'bg-green-900 text-green-400'}">${owner?owner.name:'Free Agent'}</span></td></tr>`;
+            }).join('');
+
+            document.getElementById('team-nav').innerHTML = state.teams.map((t, i) => `<button onclick="state.activeTeamIdx=${i}; state.stagedAdds=[]; state.stagedDrops=[]; render();" class="px-4 py-2 rounded-lg border ${state.activeTeamIdx===i?'border-green-500 bg-green-500/10':'border-slate-800'} font-black text-[10px] uppercase">${t.name}</button>`).join('');
+            const active = state.teams[state.activeTeamIdx];
+            if(active) {
+                const spend = active.roster.reduce((a,b)=>a+b.price,0) + state.stagedAdds.reduce((a,b)=>a+b.price,0) - state.stagedDrops.reduce((a,b)=>a+b.price,0);
+                document.getElementById('active-team-view').innerHTML = `<div class="lg:col-span-2 space-y-6"><div class="glass p-8 rounded-3xl border-t-4 border-accent-purple"><div class="flex justify-between items-end mb-8"><div><h3 onclick="renameTeam(${state.activeTeamIdx})" class="text-3xl font-black uppercase italic cursor-pointer">${active.name} ✎</h3></div><div class="text-right text-xl font-black ${spend>100000000?'text-red-500':'accent-green'}">$${(spend/1000000).toFixed(1)}M / 100M</div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-3">${active.roster.map(p => `<div class="p-4 bg-slate-900 border ${state.stagedDrops.some(d=>d.name===p.name)?'border-red-500 opacity-30':'border-slate-800'} rounded-xl flex justify-between items-center uppercase font-black"><span class="text-xs">${p.name}</span><button onclick="stageDrop('${p.name.replace("'","\\'")}')" class="text-[9px] font-black text-red-500">DROP</button></div>`).join('')}</div></div><div class="glass p-8 rounded-3xl"><h4 class="text-xs font-black uppercase text-slate-500 mb-4 tracking-widest">Global Search</h4><input type="text" id="pSearch" onkeyup="pSearch()" placeholder="Search golfer..."><div id="pResults" class="mt-4 space-y-2"></div></div></div><div class="glass p-8 rounded-3xl border border-slate-700 h-fit sticky top-8 shadow-2xl"><h4 class="text-xs uppercase text-slate-500 mb-6 font-black">Staging Area</h4><div class="space-y-3 mb-8">${state.stagedAdds.map((p,i)=> { const owner = state.teams.find(t => t.roster.some(r => r.name === p.name)); return owner ? `<div class="p-3 bg-purple-500/10 border-l-4 border-purple-500 rounded text-[10px] font-black space-y-2 uppercase"><div>TRADE: ${owner.name} <button onclick="state.stagedAdds.splice(${i},1); render();">✕</button></div><div>WANT: ${p.name}</div><div>GIVE: ${active.roster.map(rp=>`<div><input type="checkbox" onchange="toggleTradePlayer(${i},'${rp.name}')"> ${rp.name}</div>`).join('')}</div></div>` : `<div class="p-2 bg-green-500/10 border-l-4 border-green-500 rounded text-[10px] font-black flex justify-between uppercase">ADD: ${p.name} <button onclick="state.stagedAdds.splice(${i},1); render();">✕</button></div>` }).join('')}${state.stagedDrops.map((p,i)=>`<div class="p-2 bg-red-500/10 border-l-4 border-red-500 rounded text-[10px] font-black flex justify-between uppercase">DROP: ${p.name} <button onclick="state.stagedDrops.splice(${i},1); render();">✕</button></div>`).join('')}</div><button onclick="submitMoves()" class="w-full py-4 bg-green-600 rounded-xl font-black text-xs uppercase">Submit Request</button></div>`;
+            }
+
+            document.getElementById('waiver-order').innerHTML = state.waiverOrder.map((n,i)=>`<div class="p-3 bg-slate-900 border border-slate-800 rounded-xl flex justify-between text-[11px] font-black uppercase">#${i+1} <span>${n}</span></div>`).join('');
+            document.getElementById('manage-teams-list').innerHTML = state.teams.map((t, i) => `<div class="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center text-[10px] font-black uppercase"><span>${t.name}</span><button onclick="removeTeam(${i})" class="text-red-500">REMOVE</button></div>`).join('');
+            document.getElementById('claims-list').innerHTML = state.claims.length ? state.claims.map((c,i)=>`<div class="p-3 glass rounded flex justify-between text-[10px] font-bold uppercase"><span>${c.team} wants ${c.player}</span><button onclick="state.claims.splice(${i},1); render();">✕</button></div>`).join('') : '<p class="text-center text-slate-700 italic text-xs">None</p>';
+            document.getElementById('active-trades').innerHTML = state.trades.length ? state.trades.map((t,i)=>`<div class="p-4 glass border border-purple-500/30 rounded-2xl flex justify-between items-center text-[10px] font-black uppercase"><div>PROPOSAL: ${t.fromTeam} sends [${t.givePlayers.join(', ')}] for ${t.toTeam}'s ${t.wantPlayer}</div><div class="flex gap-2"><button onclick="acceptTrade(${i})" class="bg-green-600 px-4 py-2 rounded">Accept</button><button onclick="state.trades.splice(${i},1); render();">Decl</button></div></div>`).join('') : '';
+            document.getElementById('trade-log').innerHTML = state.tradeLog.map(l => `<div class="p-2 border-b border-slate-800/30 font-mono text-[9px] text-slate-500 tracking-tighter">${l}</div>`).reverse().join('');
+        }
+
+        window.pSearch = () => {
+            const v = document.getElementById('pSearch').value.toLowerCase(); if(!v) return document.getElementById('pResults').innerHTML = '';
+            document.getElementById('pResults').innerHTML = players.filter(p=>p.name.toLowerCase().includes(v)).slice(0,10).map(p=>{ const o = state.teams.find(t => t.roster.some(r => r.name === p.name)); return `<div class="p-3 bg-slate-900 border border-slate-800 rounded flex justify-between items-center text-[11px] font-black uppercase font-black"><div>${p.name} <br><span class="text-[9px] ${o?'text-purple-400':'accent-green'}">${o?o.name:'Free Agent'}</span></div><button onclick="stageAdd('${p.name.replace("'","\\'")}')" class="bg-blue-600 px-3 py-1 rounded text-[9px]">STAGE</button></div>`; }).join('');
+        };
+
+        window.submitResult = async (tourney, tIdx, res, pts) => {
+            const team = state.teams[tIdx]; if(!state.results[tourney]) state.results[tourney] = {};
+            const old = state.results[tourney][tIdx];
+            if(old === 'W') { team.w--; team.pts -= pts; }
+            if(old === 'T') { team.t--; team.pts -= (pts/2); }
+            if(old === 'L') { team.l--; }
+            state.results[tourney][tIdx] = res;
+            if(res === 'W') { team.w++; team.pts += pts; }
+            if(res === 'L') { team.l++; }
+            if(res === 'T') { team.t++; team.pts += (pts/2); }
+            await pushState(); render();
+        }
+
+        window.adjustPoints = async (idx) => {
+            const val = prompt("Deduct points:");
+            if (val && !isNaN(val)) {
+                state.teams[idx].pts -= parseFloat(val);
+                state.tradeLog.push(`[${new Date().toLocaleDateString()}] ADJ: Commissioner deducted ${val} pts from ${state.teams[idx].name}`);
+                await pushState(); render();
+            }
+        };
+
+        window.addTeam = async () => {
+            const name = prompt("Name:");
+            if (name) {
+                const nt = { id: Date.now(), name: name.trim(), roster: [], w:0, l:0, t:0, pts:0 };
+                state.teams.push(nt); state.waiverOrder.push(nt.name);
+                await pushState(); render();
+            }
+        };
+
+        window.removeTeam = async (idx) => {
+            if (confirm(`Remove?`)) {
+                state.waiverOrder = state.waiverOrder.filter(n => n !== state.teams[idx].name);
+                state.teams.splice(idx, 1);
+                await pushState(); render();
+            }
+        };
+
+        window.processWaivers = async () => {
+            state.claims.sort((a,b) => state.waiverOrder.indexOf(a.team) - state.waiverOrder.indexOf(b.team));
+            const taken = new Set();
+            state.claims.forEach(c => {
+                const team = state.teams.find(t => t.name === c.team);
+                const golfer = players.find(p => p.name === c.player);
+                if(!taken.has(c.player) && !state.teams.some(t => t.roster.some(r => r.name === c.player)) && (team?.roster || []).length < 6) {
+                    team.roster.push(golfer); taken.add(c.player);
+                    state.tradeLog.push(`[${new Date().toLocaleDateString()}] WAIVER: ${team.name} added ${c.player}`);
+                    state.waiverOrder = state.waiverOrder.filter(n => n !== team.name).concat(team.name);
+                }
+            });
+            state.claims = []; await pushState(); render();
+        };
+
+        window.toggleTradePlayer = (idx, name) => {
+            if(!state.stagedAdds[idx].multiOffer) state.stagedAdds[idx].multiOffer = [];
+            const pos = state.stagedAdds[idx].multiOffer.indexOf(name);
+            if(pos === -1) state.stagedAdds[idx].multiOffer.push(name); else state.stagedAdds[idx].multiOffer.splice(pos, 1);
+        };
+
+        window.stageAdd = n => { const p = players.find(x=>x.name===n); if(!state.stagedAdds.some(a=>a.name===n)) state.stagedAdds.push({...p, multiOffer: []}); render(); };
+        window.stageDrop = n => { const p = players.find(x=>x.name===n) || state.teams[state.activeTeamIdx].roster.find(x=>x.name===n); if(!state.stagedDrops.some(d=>d.name===n)) state.stagedDrops.push(p); render(); };
+
+        window.submitMoves = async () => {
+            const team = state.teams[state.activeTeamIdx];
+            state.stagedDrops.forEach(d => { team.roster = team.roster.filter(p => p.name !== d.name); state.tradeLog.push(`[${new Date().toLocaleDateString()}] DROP: ${team.name} released ${d.name}`); });
+            state.stagedAdds.forEach(p => {
+                const owner = state.teams.find(t => t.roster.some(r => r.name === p.name));
+                if(!owner) state.claims.push({team: team.name, player: p.name});
+                else if(p.multiOffer?.length) state.trades.push({fromTeam: team.name, toTeam: owner.name, wantPlayer: p.name, givePlayers: [...p.multiOffer]});
+            });
+            state.stagedAdds = []; state.stagedDrops = []; await pushState(); render();
+        };
+
+        window.acceptTrade = async i => {
+            const t = state.trades[i]; const t1 = state.teams.find(x=>x.name===t.fromTeam); const t2 = state.teams.find(x=>x.name===t.toTeam);
+            const pWant = t2.roster.find(x=>x.name===t.wantPlayer); const pGives = t1.roster.filter(x => t.givePlayers.includes(x.name));
+            t1.roster = t1.roster.filter(x => !t.givePlayers.includes(x.name)).concat(pWant); t2.roster = t2.roster.filter(x => x.name !== t.wantPlayer).concat(pGives);
+            state.tradeLog.push(`[${new Date().toLocaleDateString()}] TRADE: ${t1.name} got ${t.wantPlayer} for ${t.givePlayers.join(' & ')}`);
+            state.trades.splice(i,1); await pushState(); render();
+        };
+
+        window.manualWaiverOrder = async () => {
+            const val = prompt("Waiver Order:", state.waiverOrder.join(", "));
+            if (val) { state.waiverOrder = val.split(",").map(p => p.trim()); await pushState(); render(); }
+        };
+
+        window.renameTeam = async idx => {
+            const val = prompt("New name:", state.teams[idx].name);
+            if(val) {
+                const old = state.teams[idx].name; state.teams[idx].name = val;
+                state.waiverOrder = state.waiverOrder.map(n => n === old ? val : n);
+                await pushState(); render();
+            }
+        };
+
+        window.clearHistory = async () => { if(confirm("Clear?")) { state.tradeLog = []; await pushState(); render(); } };
+        window.switchTab = id => {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('tab-active'));
+            document.getElementById('tab-'+id).classList.add('active');
+            document.getElementById('btn-'+id).classList.add('tab-active');
+        };
+
+        window.onload = fetchState;
+    </script>
+</body>
+</html>
